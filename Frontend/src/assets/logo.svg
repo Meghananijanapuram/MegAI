@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Outer circle with white border -->
+  <circle cx="128" cy="128" r="120" fill="#10a37f" stroke="white" stroke-width="8"/>
+
+  <!-- Centered M -->
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-size="130" font-family="Roboto, sans-serif" font-weight="bold" fill="white">M</text>
+</svg>
