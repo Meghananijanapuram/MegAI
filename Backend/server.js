@@ -16,7 +16,10 @@ const PORT = process.env.PORT || 8080;
 app.use(cookieParser(process.env.SECRET_CODE));
 app.use(express.json());
 
-const allowedOrigins = ["https://meg-ai-frontend.vercel.app"];
+const allowedOrigins = [
+  "https://meg-ai-frontend.vercel.app",
+  "http://localhost:5173",
+];
 
 app.use(
   cors({
@@ -27,12 +30,15 @@ app.use(
   })
 );
 
-app.options("*", cors({
-  origin: allowedOrigins,
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-}));
+app.options(
+  "*",
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 const sessionOptions = {
   secret: process.env.SECRET_CODE,
@@ -41,8 +47,8 @@ const sessionOptions = {
   cookie: {
     maxAge: 7 * 24 * 60 * 60 * 1000,
     httpOnly: true,
-    sameSite: "none",   
-    secure: true,       
+    sameSite: "none",
+    secure: true,
   },
 };
 app.use(session(sessionOptions));
