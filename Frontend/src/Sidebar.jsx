@@ -1,7 +1,24 @@
+// Sidebar.jsx
 import "./Sidebar.css";
 import { useContext, useEffect } from "react";
 import { MyContext } from "./MyContext.jsx";
 import { v1 as uuidv1 } from "uuid";
+import blackLogo from "./assets/blacklogo.png";
+
+const TEMP_THREADS_KEY = "megai_temp_threads";
+const tempChatsKey = (threadId) => `megai_temp_chat_${threadId}`;
+
+const getTempThreads = () =>
+  JSON.parse(localStorage.getItem(TEMP_THREADS_KEY) || "[]");
+const saveTempThreads = (threads) =>
+  localStorage.setItem(TEMP_THREADS_KEY, JSON.stringify(threads));
+const getTempChats = (threadId) =>
+  JSON.parse(localStorage.getItem(tempChatsKey(threadId)) || "[]");
+const deleteTempChat = (threadId) => {
+  const threads = getTempThreads().filter((t) => t.threadId !== threadId);
+  saveTempThreads(threads);
+  localStorage.removeItem(tempChatsKey(threadId));
+};
 
 function Sidebar() {
   const {
@@ -13,92 +30,100 @@ function Sidebar() {
     setReply,
     setCurrThreadId,
     setPrevChats,
-    user, 
+    user,
   } = useContext(MyContext);
 
   const stopSpeaking = () => {
-  if (window.speechSynthesis.speaking) {
-    window.speechSynthesis.cancel();
-  }
-};
-
-  const getAllThreads = async () => {
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/thread`,
-        {
-          method: "GET",
-          credentials: "include",
-        }
-      );
-
-      if (!response.ok) {
-        console.error("Unauthorized or server error:", response.status);
-        setAllThreads([]);
-        return;
-      }
-
-      const res = await response.json();
-
-      if (Array.isArray(res)) {
-        const filteredData = res.map((thread) => ({
-          threadId: thread.threadId,
-          title: thread.title,
-        }));
-        setAllThreads(filteredData);
-      } else {
-        console.error("Unexpected response:", res);
-        setAllThreads([]);
-      }
-    } catch (err) {
-      console.error("Failed to fetch threads", err);
-      setAllThreads([]);
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
     }
   };
 
-   useEffect(() => {
+  const getAllThreads = async () => {
+    try {
+      if (user) {
+        const response = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/api/thread`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        );
+
+        if (!response.ok) {
+          console.error("Failed fetching threads:", response.status);
+          setAllThreads([]);
+          return;
+        }
+
+        const res = await response.json();
+        setAllThreads(res);
+      } else {
+        // anonymous --> load from localStorage
+        setAllThreads(getTempThreads());
+      }
+    } catch (err) {
+      console.error("Failed to fetch threads", err);
+      setAllThreads(user ? [] : getTempThreads());
+    }
+  };
+
+  useEffect(() => {
     getAllThreads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (user) {
-      getAllThreads();
+    // when auth state changes, refresh thread source
+    getAllThreads();
+    if (!user) {
+      setPrevChats([]); // clear loaded chats (will load from localStorage when user clicks)
+      setCurrThreadId(null);
     } else {
-      setAllThreads([]); 
+      // optionally clear temp prev chats (or you might want to migrate)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const createNewChat = () => {
     setNewChat(true);
     setPrompt("");
     setReply(null);
-    setCurrThreadId(uuidv1()); 
+    setCurrThreadId(uuidv1());
     setPrevChats([]);
     stopSpeaking();
   };
 
   const changeThread = async (newThreadId) => {
     setCurrThreadId(newThreadId);
-    stopSpeaking(); 
+    stopSpeaking();
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/thread/${newThreadId}`,
-        {
-          method: "GET",
-          credentials: "include",
+      if (user) {
+        const response = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/api/thread/${newThreadId}`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        );
+
+        if (!response.ok) {
+          console.error("Unauthorized or not found:", response.status);
+          setPrevChats([]);
+          return;
         }
-      );
 
-      if (!response.ok) {
-        console.error("Unauthorized or not found:", response.status);
-        setPrevChats([]);
-        return;
+        const res = await response.json();
+        setPrevChats(res);
+        setNewChat(false);
+        setReply(null);
+      } else {
+        // anonymous -> load from localStorage
+        const tmp = getTempChats(newThreadId);
+        setPrevChats(tmp || []);
+        setNewChat(false);
+        setReply(null);
       }
-
-      const res = await response.json();
-      setPrevChats(res);
-      setNewChat(false);
-      setReply(null);
     } catch (err) {
       console.error("Failed to load thread", err);
       setPrevChats([]);
@@ -107,16 +132,25 @@ function Sidebar() {
 
   const deleteThread = async (threadId) => {
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/thread/${threadId}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
-      );
+      if (user) {
+        const response = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/api/thread/${threadId}`,
+          {
+            method: "DELETE",
+            credentials: "include",
+          }
+        );
 
-      const res = await response.json();
-      console.log(res);
+        if (!response.ok) {
+          console.error("Failed to delete on server", response.status);
+        } else {
+          const res = await response.json();
+          console.log(res);
+        }
+      } else {
+        // anonymous -> delete localStorage
+        deleteTempChat(threadId);
+      }
 
       setAllThreads((prev) =>
         prev.filter((thread) => thread.threadId !== threadId)
@@ -133,11 +167,7 @@ function Sidebar() {
   return (
     <section className="sidebar">
       <button onClick={createNewChat}>
-        <img
-          src="src/assets/blacklogo.png"
-          alt="gpt logo"
-          className="logo"
-        />
+        <img src={blackLogo} alt="gpt logo" className="logo" />
         <span>
           <i className="fa-solid fa-pen-to-square"></i>
         </span>

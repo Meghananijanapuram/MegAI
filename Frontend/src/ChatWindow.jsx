@@ -1,3 +1,4 @@
+// ChatWindow.jsx
 import { useContext, useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MyContext } from "./MyContext.jsx";
@@ -5,6 +6,25 @@ import Chat from "./Chat.jsx";
 import { ScaleLoader } from "react-spinners";
 import "./ChatWindow.css";
 import { v1 as uuidv1 } from "uuid";
+
+import { clearGuestChats } from "../public/utils/guestStorage.js";
+
+const TEMP_THREADS_KEY = "megai_temp_threads"; // array of { threadId, title }
+const tempChatsKey = (threadId) => `megai_temp_chat_${threadId}`;
+
+const getTempThreads = () =>
+  JSON.parse(localStorage.getItem(TEMP_THREADS_KEY) || "[]");
+const saveTempThreads = (threads) =>
+  localStorage.setItem(TEMP_THREADS_KEY, JSON.stringify(threads));
+const getTempChats = (threadId) =>
+  JSON.parse(localStorage.getItem(tempChatsKey(threadId)) || "[]");
+const saveTempChats = (threadId, chats) =>
+  localStorage.setItem(tempChatsKey(threadId), JSON.stringify(chats));
+const deleteTempChat = (threadId) => {
+  const threads = getTempThreads().filter((t) => t.threadId !== threadId);
+  saveTempThreads(threads);
+  localStorage.removeItem(tempChatsKey(threadId));
+};
 
 function ChatWindow() {
   const {
@@ -14,21 +34,24 @@ function ChatWindow() {
     setReply,
     currThreadId,
     setCurrThreadId,
+    prevChats,
     setPrevChats,
     setNewChat,
     setAllThreads,
     newChat,
+    user,
+    setUser,
   } = useContext(MyContext);
 
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [user, setUser] = useState(null);
   const [listening, setListening] = useState(false);
   const [isVoiceInput, setIsVoiceInput] = useState(false);
 
   const recognitionRef = useRef(null);
   const navigate = useNavigate();
 
+  // Fetch current logged-in user and set in context (only once)
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -37,16 +60,38 @@ function ChatWindow() {
           { credentials: "include" }
         );
         const data = await res.json();
-        if (data?.user) {
-          setUser(data.user);
-        } else {
+        setUser(data?.user || null);
+        // If anonymous, hydrate local threads into state so Sidebar shows them
+        if (!data?.user) {
+          setAllThreads(getTempThreads());
+
+          setNewChat(true);
+          setPrevChats([]);
+          setCurrThreadId(null);
+          setPrompt("");
+          setReply(null);
           setUser(null);
+        } else {
+          // when logged in, fetch server threads
+          clearGuestChats();
+
+          const thr = await fetch(
+            `${import.meta.env.VITE_BACKEND_URL}/api/thread`,
+            {
+              credentials: "include",
+            }
+          );
+          const threads = await thr.json();
+          setAllThreads(threads);
         }
       } catch (err) {
         console.error("Error fetching user:", err);
+        setUser(null);
+        setAllThreads(getTempThreads());
       }
     };
     fetchUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogout = async () => {
@@ -75,13 +120,15 @@ function ChatWindow() {
   const getReply = async () => {
     if (!prompt.trim()) return;
     setIsVoiceInput(false);
-
+    stopSpeaking();
+    // ensure threadId
     let threadId = currThreadId;
     if (!threadId || newChat) {
       threadId = uuidv1();
       setCurrThreadId(threadId);
       setNewChat(false);
 
+      // add thread to UI list (temporarily). We'll persist either to DB or localStorage below
       setAllThreads((prev) => [
         { threadId, title: prompt.slice(0, 30) || "New Chat" },
         ...prev,
@@ -92,12 +139,13 @@ function ChatWindow() {
     setNewChat(false);
 
     try {
+      // ALWAYS call backend to generate the assistant's reply
       const response = await fetch(
         `${import.meta.env.VITE_BACKEND_URL}/api/chat`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          credentials: "include", // keep cookies included; backend will check req.user
           body: JSON.stringify({
             message: prompt,
             threadId: threadId,
@@ -106,16 +154,20 @@ function ChatWindow() {
       );
 
       if (!response.ok) {
+        // backend might still return 401 for thread listing; but chat endpoint should be allowed
         throw new Error(`Server error: ${response.status}`);
       }
 
       const data = await response.json();
+      // data = { reply: "...", saved: true/false } from backend (see server change below)
 
-      setPrevChats((prev) => [
-        ...prev,
+      // push to chat window
+      const newPrev = [
+        ...prevChats,
         { role: "user", content: prompt },
         { role: "assistant", content: data.reply },
-      ]);
+      ];
+      setPrevChats(newPrev);
       setReply(data.reply);
 
       stopSpeaking();
@@ -124,12 +176,36 @@ function ChatWindow() {
         speakText(data.reply);
       }
 
-      const threadsResponse = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/thread`,
-        { credentials: "include" }
-      );
-      const updatedThreads = await threadsResponse.json();
-      setAllThreads(updatedThreads);
+      // if saved on server (logged-in), refresh server thread list
+      if (data.saved || user) {
+        try {
+          const threadsResponse = await fetch(
+            `${import.meta.env.VITE_BACKEND_URL}/api/thread`,
+            { credentials: "include" }
+          );
+          if (threadsResponse.ok) {
+            const updatedThreads = await threadsResponse.json();
+            setAllThreads(updatedThreads);
+          }
+        } catch (err) {
+          console.error("Failed to refresh threads from server:", err);
+        }
+      } else {
+        // anonymous: persist only to localStorage
+        saveTempChats(threadId, newPrev);
+
+        // ensure temp threads list contains this thread with title
+        const existing = getTempThreads();
+        const alreadyExists = existing.find((t) => t.threadId === threadId);
+        if (!alreadyExists) {
+          const newTemp = [
+            { threadId, title: prompt.slice(0, 30) || "New Chat" },
+            ...existing,
+          ];
+          saveTempThreads(newTemp);
+          setAllThreads(newTemp);
+        }
+      }
     } catch (err) {
       console.error("Failed to fetch reply:", err);
     } finally {
@@ -138,6 +214,7 @@ function ChatWindow() {
     }
   };
 
+  /* voice / speech helpers (unchanged) */
   const handleProfileClick = () => {
     setIsOpen(!isOpen);
   };
@@ -252,7 +329,7 @@ function ChatWindow() {
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => (e.key === "Enter" ? getReply() : "")}
           />
-  
+
           <div id="mic" onClick={handleVoiceInput}>
             <i
               className={`fa-solid fa-microphone ${
