@@ -29,7 +29,7 @@ app.use(express.json());
 
 
 const allowedOrigins = [
-  "https://meg-ai-frontend.vercel.app",
+  "https://meg-ai.vercel.app",
   "http://localhost:5173",
 ];
 
