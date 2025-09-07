@@ -22,14 +22,21 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, origin); 
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-app.options("*", cors());
+app.options("*", cors({
+  origin: allowedOrigins,
+  credentials: true,
+}));
 
 const sessionOptions = {
   secret: process.env.SECRET_CODE,
