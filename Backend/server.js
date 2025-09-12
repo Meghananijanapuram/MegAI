@@ -29,6 +29,7 @@ app.use(express.json());
 
 
 const allowedOrigins = [
+  "https://megai.onrender.com",
   "https://meg-ai.vercel.app",
   "http://localhost:5173",
 ];
