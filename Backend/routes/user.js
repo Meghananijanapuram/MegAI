@@ -87,10 +87,16 @@ router.get("/logout", (req, res, next) => {
 
 
 router.get("/loggedIn", (req, res) => {
-  if (req.isAuthenticated()) {
-    res.json({ user: req.user }); 
-  } else {
-    res.json({ user: null }); 
+   try {
+    const loggedIn = typeof req.isAuthenticated === "function" ? req.isAuthenticated() : false;
+
+    res.json({
+      loggedIn,
+      user: loggedIn ? req.user : null,
+    });
+  } catch (err) {
+    console.error("Error in /loggedIn:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
