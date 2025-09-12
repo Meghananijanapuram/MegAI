@@ -57,7 +57,7 @@ function ChatWindow() {
       try {
         const res = await fetch(
           `${import.meta.env.VITE_BACKEND_URL}/user/loggedIn`,
-          { credentials: "include" }
+          { credentials: "include", method : 'GET' }
         );
         const data = await res.json();
         setUser(data?.user || null);
