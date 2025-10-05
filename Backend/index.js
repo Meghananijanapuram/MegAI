@@ -4,9 +4,9 @@ import cors from "cors";
 import mongoose from "mongoose";
 import passport from "passport";
 import LocalStrategy from "passport-local";
-import User from "../models/user.js";
-import chatRouter from "../routes/chat.js";
-import userRouter from "../routes/user.js";
+import User from "./models/user.js";
+import chatRouter from "./routes/chat.js";
+import userRouter from "./routes/user.js";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 
@@ -16,10 +16,10 @@ app.use(cookieParser(process.env.SECRET_CODE));
 app.use(express.json());
 
 const allowedOrigins = [
+  "https://megai.onrender.com",
   "https://meg-ai.vercel.app",
   "http://localhost:5173",
 ];
-
 app.use(
   cors({
     origin: (origin, callback) => {
