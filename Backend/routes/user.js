@@ -51,18 +51,24 @@ router.post("/signup", async (req, res, next) => {
   }
 });
 
-
 router.post("/login", (req, res, next) => {
   passport.authenticate("local", (err, user, info) => {
     if (err) {
       return res.status(500).json({ success: false, message: "Server error" });
     }
     if (!user) {
-      return res.status(400).json({ success: false, message: info.message || "Invalid username or password" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: info.message || "Invalid username or password",
+        });
     }
     req.logIn(user, (err) => {
       if (err) {
-        return res.status(500).json({ success: false, message: "Login failed" });
+        return res
+          .status(500)
+          .json({ success: false, message: "Login failed" });
       }
 
       return res.status(200).json({
@@ -85,10 +91,13 @@ router.get("/logout", (req, res, next) => {
   });
 });
 
-
 router.get("/loggedIn", (req, res) => {
-   try {
-    const loggedIn = typeof req.isAuthenticated === "function" ? req.isAuthenticated() : false;
+  try {
+    const loggedIn =
+      typeof req.isAuthenticated === "function" ? req.isAuthenticated() : false;
+
+    console.log("Session:", req.session);
+    console.log("Authenticated:", req.isAuthenticated());
 
     res.json({
       loggedIn,
@@ -99,6 +108,5 @@ router.get("/loggedIn", (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 export default router;

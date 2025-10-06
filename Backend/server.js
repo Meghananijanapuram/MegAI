@@ -11,6 +11,7 @@ import cookieParser from "cookie-parser";
 import session from "express-session";
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 8080;
 
 app.use(cookieParser(process.env.SECRET_CODE));
